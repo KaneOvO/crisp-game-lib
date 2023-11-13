@@ -146,7 +146,7 @@ function drawBoss(pos) {
     previousHp = boss.hp;
   }
 
-  drawHeart();
+  //drawHeart();
 }
 
 function drawArcs(x, y) {
