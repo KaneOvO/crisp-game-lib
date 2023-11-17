@@ -10,20 +10,21 @@ options = {
   viewSize: { x: 100, y: 150 },
   isPlayingBgm: true,
   isReplayEnabled: true,
-  theme:`pixel`, 
+  theme: `pixel`,
   isShowingScore: false,
   isShowingTime: false,
 };
 
 let cannon;
-let cannonSpeed = 1.2;
+const cannonSpeed = 1.2;
 
 let bullets = [];
 let bulletCount = 10; // 初始子弹数为10发
 
 let discs = []; // 存储所有飞盘
 let discLauncherCooldown = 180; // 发射器冷却时间，以帧为单位（这里以60FPS计算，即3秒）
-const discSpeedValue = 0.5;
+let discSpeedValue = 0.5;
+const upGradeTime = 1200;
 let isGameOver = false;
 
 let gameScore = 0;
@@ -32,6 +33,8 @@ let hitDiscCount = 0; // 玩家击中蓝色飞盘的数量
 const specialDiscSpeedValue = 1; // 特殊飞盘的速度
 let specialDiscGenerated = false; // 是否已经生成了特殊飞盘
 let specialDiscExitTime = 0; // 记录特殊飞盘离开屏幕的时间
+
+let scorePopups = [];
 
 function update() {
   // The init function running at startup
@@ -56,6 +59,9 @@ function update() {
       gameScore = 0;
       hitDiscCount = 0;
       specialDiscGenerated = false;
+      specialDiscExitTime = 0;
+      discSpeedValue = 0.5;
+      ticks = 0; // 重置帧数
       // 这里可以添加其他需要重置的游戏状态
     }
     return; // 早期返回，不运行游戏的其他更新逻辑
@@ -70,15 +76,15 @@ function update() {
   }
 
   // Draw the cannon
-  color("black");
+  color("light_purple");
   box(cannon.pos, 10, 10);
   box(cannon.pos.x, cannon.pos.y - 5, 3, 5);
 
   color("black");
-  text(`Bullets:${bulletCount}`,3, 3);
+  text(`Bullets:${bulletCount}`, 3, 3);
 
   color("black");
-  text(`Score:${gameScore}`,3, 10);
+  text(`Score:${gameScore}`, 3, 10);
 
   if (bulletCount === 0 && bullets.length === 0) {
     // 如果没有子弹了，设置游戏结束标志
@@ -113,16 +119,15 @@ function update() {
         ) {
           if (disc.color === "blue") {
             hitDiscCount++; // 增加击中蓝色飞盘的计数
-            gameScore+=5;
+            gameScore += 5;
             bulletCount++; // 子弹数增加
           }
-          if(disc.color === "green"){
-            gameScore+=10;
+          if (disc.color === "green") {
+            gameScore += 10;
             specialDiscExitTime = ticks;
-            if(bulletCount < 5){
-              bulletCount+= 5;
-            }
-            else{
+            if (bulletCount < 5) {
+              bulletCount += 5;
+            } else {
               bulletCount = 10;
             }
           }
@@ -132,18 +137,21 @@ function update() {
           play("hit"); // 播放爆炸音效
           discs.splice(discIndex, 1); // 移除击中的飞盘
           bullets.splice(bulletIndex, 1); // 移除击中飞盘的子弹
-          
+          let scorePopup = {
+            pos: vec(disc.pos.x, disc.pos.y), // 分数显示的位置
+            score: disc.color === "blue" ? "+5" : "+10", // 根据飞盘颜色决定分数
+            life: 30, // 分数显示的持续帧数
+          };
+          scorePopups.push(scorePopup);
+
           // 因为我们移除了一个飞盘，后面的索引会发生变化
           // 所以我们减少 discIndex 和 bulletIndex
           discIndex--;
           bulletIndex--;
-          
         }
       });
     }
   });
-
-
 
   // 绘制所有炮弹
   color("red");
@@ -153,12 +161,15 @@ function update() {
 
   // 每三秒发射一个飞盘
   if (ticks % discLauncherCooldown === 0) {
-    const angle = rnd(Math.PI / 4, 3 * Math.PI / 4);
-    const discSpeed = vec(Math.cos(angle) * discSpeedValue, Math.sin(angle) * discSpeedValue);
+    const angle = rnd(Math.PI / 4, (3 * Math.PI) / 4);
+    const discSpeed = vec(
+      Math.cos(angle) * discSpeedValue,
+      Math.sin(angle) * discSpeedValue
+    );
     const disc = {
       pos: vec(rnd(0, 100), 10), // 飞盘在顶部随机位置生成
       speed: discSpeed, // 飞盘的速度和方向随机
-      color: "blue" // 飞盘的颜色为蓝色
+      color: "blue", // 飞盘的颜色为蓝色
     };
     discs.push(disc);
   }
@@ -171,53 +182,72 @@ function update() {
       disc.speed.x *= -1; // 水平速度反向
     }
     // 检查飞盘是否触碰到屏幕底部
-    if(disc.color === "blue"){
+    if (disc.color === "blue") {
       if (disc.pos.y > 150) {
         isGameOver = true; // 触碰到底部，游戏结束
       } else {
         // 绘制飞盘
         color(disc.color);
-        arc(disc.pos, 5);;
+        arc(disc.pos, 5);
       }
-    }
-    else if (disc.color === "green") {
+    } else if (disc.color === "green") {
       // 绘制特殊飞盘
       if (disc.pos.y > 150) {
         discs.splice(index, 1);
         specialDiscExitTime = ticks;
-      }
-      else{
+      } else {
         color(disc.color);
         arc(disc.pos, 5);
       }
     }
-    
   });
-
 
   if (hitDiscCount % 10 == 0 && hitDiscCount > 0 && !specialDiscGenerated) {
     specialDiscGenerated = true;
     generateSpecialDisc();
   }
 
-  if (specialDiscGenerated && specialDiscExitTime > 0 && ticks - specialDiscExitTime > 600) { // 假设游戏运行在60FPS
+  for (let i = scorePopups.length - 1; i >= 0; i--) {
+    let popup = scorePopups[i];
+    popup.life--;
+    if (popup.life <= 0) {
+      scorePopups.splice(i, 1); // 生命周期结束则移除
+    } else {
+      // 显示分数
+      color("black");
+      text(popup.score, popup.pos.x, popup.pos.y);
+      popup.pos.y--; // 让分数上浮效果
+    }
+  }
+
+  if (
+    specialDiscGenerated &&
+    specialDiscExitTime > 0 &&
+    ticks - specialDiscExitTime > 600
+  ) {
+    // 假设游戏运行在60FPS
     specialDiscGenerated = false;
     specialDiscExitTime = 0; // 重置计时器
   }
 
+  if (ticks % upGradeTime === 0 && !isGameOver && ticks > 0) {
+    if (discSpeedValue < 1.5) {
+      discSpeedValue += 0.1;
+    }
+  }
 }
-
 
 // 生成特殊飞盘的函数
 function generateSpecialDisc() {
-  const angle = rnd(Math.PI / 4, 3 * Math.PI / 4);
-  const discSpeed = vec(Math.cos(angle) * specialDiscSpeedValue, Math.sin(angle) * specialDiscSpeedValue);
+  const angle = rnd(Math.PI / 4, (3 * Math.PI) / 4);
+  const discSpeed = vec(
+    Math.cos(angle) * specialDiscSpeedValue,
+    Math.sin(angle) * specialDiscSpeedValue
+  );
   const specialDisc = {
     pos: vec(rnd(0, 100), 10),
     speed: discSpeed,
-    color: "green" // 特殊飞盘的颜色
+    color: "green", // 特殊飞盘的颜色
   };
   discs.push(specialDisc);
 }
-
-
